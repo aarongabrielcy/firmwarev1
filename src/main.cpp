@@ -80,6 +80,7 @@ bool configureTCP(const String& server, int port);
 bool getPositionServer();
 void confiGpsReports();
 bool checkSignificantCourseChange(float currentCourse);
+void processCommand(String command);
 
 void setup() {
   // Configurar pines
@@ -164,8 +165,12 @@ String readSerialGNSSData() {
   return rawdata;
 }
 void handleSerialInput() {
+
   if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
+    if (command.startsWith("CMD;")) {
+      processCommand(command);
+    }
     String response = sendCommandWithResponse(command.c_str(), 4000);
     Serial.print("Respuesta limpia: ");
     Serial.println(response);
@@ -526,4 +531,28 @@ bool configureTCP(const String& server, int port) {
 void confiGpsReports(){
   String cgnss = sendCommandWithResponse("AT+CGNSSINFO=1", 4000);  
   Serial.println("+CGNSSINFO => "+ cgnss);
+}
+void processCommand(String command) {
+  int separator1 = command.indexOf(';');  // Primera posición del separador ';'
+  int separator2 = command.indexOf(';', separator1 + 1); // Segunda posición del separador ';'
+
+  if (separator2 != -1) {
+    String action = command.substring(separator1 + 1, separator2); // "02"
+    String valueStr = command.substring(separator2 + 1); // "1000"
+
+    // Convertir valores a enteros
+    int actionCode = action.toInt();
+    int value = valueStr.toInt();
+
+    if (actionCode == 2) { // Acción para modificar el intervalo
+      interval = value;
+      Serial.print("Intervalo modificado a: ");
+      Serial.print(interval);
+      Serial.println(" ms");
+      } else {
+          Serial.println("Código de acción no reconocido.");
+      }
+  } else {
+      Serial.println("Error en el formato del comando.");
+    }
 }
