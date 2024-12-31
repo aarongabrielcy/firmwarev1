@@ -1,7 +1,8 @@
 enum events {
-    TRACKING = 0,
-    CURVE = 1,
-    CRASH = 2,
+    TIME = 0,
+    ANGLE,
+    DISTANCE,
+    CRASH,
     ROLLOVER = 3,
     IGN_ON = 33,
     IGN_OFF = 34

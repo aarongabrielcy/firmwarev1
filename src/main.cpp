@@ -30,8 +30,8 @@ struct GPSData {
   int gps_svs;
   int glonass_svs;
   int beidou_svs;
-  String latitude = "0.0";
-  String longitude = "0.0";
+  double latitude;
+  double longitude;
   char ns_indicator;
   char ew_indicator;
   String date;
@@ -50,6 +50,9 @@ bool ignState;
 bool fix = 1;
 String datetime;
 
+String latitude;
+String longitude;
+
 void activeSIM();
 void configSIM();
 void activeGPS();
@@ -59,7 +62,7 @@ String sendCommandWithResponse( const char* command, int timeout );
 String processResponse(const String& command,  const String& fcommand, const String& response);
 String readSerialGNSSData();
 void handleSerialInput();
-String formatCoordinates(const String &coord, char direction);
+String formatCoordinates(double coord, char direction);
 String formatDate(const String &date);
 String formatTime(const String &utcTime);
 GPSData processGNSS(const String& response);
@@ -107,8 +110,10 @@ void loop() {
   readInput() ? ignState = 0 : ignState = 1;
   ignition_event(currentGNSSData);
   datetime = currentGNSSData.date+";"+currentGNSSData.utc_time;
-
-  message = "STT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+currentGNSSData.latitude+";"+currentGNSSData.longitude+";" +String(currentGNSSData.speed) + ";" +
+  latitude = formatCoordinates(currentGNSSData.latitude, currentGNSSData.ns_indicator);
+  longitude = formatCoordinates(currentGNSSData.longitude, currentGNSSData.ew_indicator);
+  
+  message = "STT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";" +String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;1;1;0929;4.1;14.19";
   
   if (checkSignificantCourseChange(currentGNSSData.course)) {
@@ -129,14 +134,7 @@ void loop() {
     Serial.println("DATA =>"+message);
     Serial.println("RAWDATA =>"+GNSSData);
     sendData(message);
-      /*if (!gpsData.isEmpty()) {
-        Serial.print("GNSS DATA => ");
-        Serial.println(gpsData); // Imprimir datos almacenados
-      } else {
-        Serial.println("No se han recibido datos del GPS.");
-      }*/
-  }
-   
+  } 
 }
 bool checkSignificantCourseChange(float currentCourse) {
   if (isnan(currentCourse)) {
@@ -274,9 +272,9 @@ GPSData processGNSS(const String& trashData) {
     gpsData.gps_svs = tokens[1].toInt();
     gpsData.glonass_svs = tokens[2].toInt();
     gpsData.beidou_svs = tokens[3].toInt();
-    gpsData.latitude = !tokens[4].isEmpty() ? formatCoordinates(tokens[4], tokens[5][0]) : "0.0";
+    gpsData.latitude = !tokens[4].toDouble();
     gpsData.ns_indicator = tokens[5][0];
-    gpsData.longitude = !tokens[6].isEmpty() ? formatCoordinates(tokens[6], tokens[7][0]) : "0.0";
+    gpsData.longitude = !tokens[6].toDouble();
     gpsData.ew_indicator = tokens[7][0];
     gpsData.date = formatDate(tokens[8]);      // Formatear la fecha
     gpsData.utc_time = formatTime(tokens[9]);  // Formatear la hora
@@ -336,11 +334,11 @@ String trimResponse(const String& response) {
   return result;
 }
 
-String formatCoordinates(const String &coord, char direction) {
-    int degreesLength = (coord.indexOf('.') > 4) ? 3 : 2; // Verificar si son 2 o 3 dígitos para grados
-    int degrees = coord.substring(0, degreesLength).toInt();
-    float minutes = coord.substring(degreesLength).toFloat();
-    float decimalDegrees = degrees + (minutes / 60.0);
+String formatCoordinates(double coord, char direction) {
+    // Separar grados y minutos usando operaciones matemáticas
+    int degrees = static_cast<int>(coord / 100); // Obtener los grados (parte entera)
+    double minutes = coord - (degrees * 100);    // Obtener los minutos (parte decimal)
+    double decimalDegrees = degrees + (minutes / 60.0); // Convertir a grados decimales
 
     // Aplicar signo dependiendo de la dirección
     if (direction == 'S' || direction == 'W') {
@@ -348,10 +346,11 @@ String formatCoordinates(const String &coord, char direction) {
     }
 
     // Formatear el resultado como string con signo explícito
-    char buffer[12]; // Tamaño suficiente para contener coordenadas con precisión
-    snprintf(buffer, sizeof(buffer), "%+.6f", decimalDegrees); // "%+" añade el signo explícito
+    char buffer[12]; // Suficiente para contener el resultado con precisión
+    snprintf(buffer, sizeof(buffer), "%+.6f", decimalDegrees); // "%+" añade el signo explícito para valores positivos
     return String(buffer);
 }
+
 String formatDate(const String &date) {
     // Formato de entrada: DDMMYY (e.g., 141124)
     // Formato de salida: YYYYMMDD (e.g., 20241121)
@@ -402,7 +401,7 @@ void ignition_event(GPSData gpsData) {
 void event_generated(GPSData gpsData, int event){
 
   String data_event = "";
-    data_event = "ALT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+currentGNSSData.latitude+";"+currentGNSSData.longitude+";"+String(currentGNSSData.speed) + ";" +
+    data_event = "ALT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";"+String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;"+event+";;";
     Serial.println("Event => "+ data_event);
     sendData(data_event);
