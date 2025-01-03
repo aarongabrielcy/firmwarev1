@@ -67,7 +67,7 @@ String formatDate(const String &date);
 String formatTime(const String &utcTime);
 GPSData processGNSS(const String& response);
 String cleanGNSS(const String& data);
-bool sendData(const String& message);
+bool sendData(const String& message, int timeout);
 int eventCourse(GPSData data);
 void ignition_event(GPSData gpsData);
 bool readInput();
@@ -124,7 +124,7 @@ void loop() {
   if (!storedMessages.empty()) {
     // Enviar todos los mensajes almacenados
     for (const auto& msg : storedMessages) {
-      sendData(msg);
+      sendData(msg, 3000);
     }
     storedMessages.clear(); // Limpiar el vector después de enviar los mensajes
   }
@@ -133,7 +133,7 @@ void loop() {
     lastPrintTime = currentTime;
     Serial.println("DATA =>"+message);
     Serial.println("RAWDATA =>"+GNSSData);
-    sendData(message);
+    sendData(message, 3000);
   } 
 }
 bool checkSignificantCourseChange(float currentCourse) {
@@ -272,9 +272,9 @@ GPSData processGNSS(const String& trashData) {
     gpsData.gps_svs = tokens[1].toInt();
     gpsData.glonass_svs = tokens[2].toInt();
     gpsData.beidou_svs = tokens[3].toInt();
-    gpsData.latitude = !tokens[4].toDouble();
+    gpsData.latitude = tokens[4].toDouble();
     gpsData.ns_indicator = tokens[5][0];
-    gpsData.longitude = !tokens[6].toDouble();
+    gpsData.longitude = tokens[6].toDouble();
     gpsData.ew_indicator = tokens[7][0];
     gpsData.date = formatDate(tokens[8]);      // Formatear la fecha
     gpsData.utc_time = formatTime(tokens[9]);  // Formatear la hora
@@ -369,13 +369,13 @@ String formatTime(const String &utcTime) {
     return hours + ":" + minutes + ":" + seconds;
 }
 
-bool sendData(const String& message) {
+bool sendData(const String& message, int timeout) {
   String cmd = "AT+CIPSEND=1," + String(message.length());
-  String response = sendCommandWithResponse(cmd.c_str(), 1000);
+  String response = sendCommandWithResponse(cmd.c_str(), timeout);
   if (response.indexOf(">") != -1) {
-    String respServer = sendReadDataToServer("CIPSEND", message, 1000); // Envía el mensaje   
+    String respServer = sendReadDataToServer("CIPSEND", message, timeout); // Envía el mensaje   
     Serial.println("Respuesta procesada => " + respServer);
-    String respCMD = readData(respServer, 1000);
+    String respCMD = readData(respServer, timeout);
     Serial.println("Comando recibido =>"+respCMD);
   }else {
     Serial.println("Error al enviar mensaje TCP. Intentando reconexión...");
@@ -404,7 +404,7 @@ void event_generated(GPSData gpsData, int event){
     data_event = "ALT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";"+String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;"+event+";;";
     Serial.println("Event => "+ data_event);
-    sendData(data_event);
+    sendData(data_event, 3000);
 }
 bool readInput() {
     return digitalRead(10);
