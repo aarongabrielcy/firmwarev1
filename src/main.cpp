@@ -53,6 +53,9 @@ String datetime;
 String latitude;
 String longitude;
 
+int count_course = 0;
+int count = 0;
+
 void activeSIM();
 void configSIM();
 void activeGPS();
@@ -116,24 +119,33 @@ void loop() {
   message = "STT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";" +String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;1;1;0929;4.1;14.19";
   
-  if (checkSignificantCourseChange(currentGNSSData.course)) {
+  if (checkSignificantCourseChange(currentGNSSData.course) && ignState == 1) {
+    count_course++;
+    Serial.print("guardo en buffer y retorno = >");
+    Serial.println(message +" :: "+count_course);
     storedMessages.push_back(message);
     return; 
   }
+
    // Si no hay cambio significativo, pero hay mensajes almacenados
   if (!storedMessages.empty()) {
     // Enviar todos los mensajes almacenados
     for (const auto& msg : storedMessages) {
-      sendData(msg, 3000);
+      count++;
+      Serial.print("buffer => ");
+      Serial.println(msg +":"+count);
+      sendData(msg, 1500);
     }
     storedMessages.clear(); // Limpiar el vector después de enviar los mensajes
   }
+  count_course = 0;
+  count=0;
   unsigned long currentTime = millis();
   if (currentTime - lastPrintTime >= interval && ignState == 1) {
     lastPrintTime = currentTime;
     Serial.println("DATA =>"+message);
     Serial.println("RAWDATA =>"+GNSSData);
-    sendData(message, 3000);
+    sendData(message, 1500);
   } 
 }
 bool checkSignificantCourseChange(float currentCourse) {
@@ -196,16 +208,18 @@ void activeSIM() {
   Serial.println("Módulo SIM7600 iniciado.");
 }
 void configSIM() {
-  String cfun = sendCommandWithResponse("AT+CFUN=1", 4000);
+  String cfun = sendCommandWithResponse("AT+CFUN=1", 2000);
   Serial.println("+CFUN => "+ cfun);
   String cgdcont_cmd = "AT+CGDCONT=\""+String(c_id)+"\",\""+PDPTYPE+"\",\""+apn+"\"";
   Serial.println("Comando APN Conf => "+ cgdcont_cmd);
-  String cgdcont = sendCommandWithResponse(cgdcont_cmd.c_str(), 4000);
+  String cgdcont = sendCommandWithResponse(cgdcont_cmd.c_str(), 2000);
   Serial.println("+CGDCONT => "+ cgdcont);
-  String cgact = sendCommandWithResponse("AT+CGACT=1,1", 4000);
+  String cgact = sendCommandWithResponse("AT+CGACT=1,1", 2000);
   Serial.println("+CGACT => "+ cgact);
-  String cgps = sendCommandWithResponse("AT+CGPS=1", 4000);  
-  Serial.println("+CGPS => "+ cgps);
+  //String cgps = sendCommandWithResponse("AT+CGPS=1", 4000);  
+  //Serial.println("+CGPS => "+ cgps);
+  String cgpshot = sendCommandWithResponse("AT+CGPSHOT", 2000);  
+  Serial.println("+CGPS => "+ cgpshot);
 }
 String sendCommandWithResponse( const char* command, int timeout ) {
   
@@ -404,7 +418,7 @@ void event_generated(GPSData gpsData, int event){
     data_event = "ALT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";"+String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;"+event+";;";
     Serial.println("Event => "+ data_event);
-    sendData(data_event, 3000);
+    sendData(data_event, 1500);
 }
 bool readInput() {
     return digitalRead(10);
