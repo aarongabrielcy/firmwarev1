@@ -8,11 +8,12 @@
 #define DEFAULT_SVR "34.196.135.179"
 #define DEFAULT_PORT 5200
 #define PDPTYPE "IP"
+#define LED_PIN 19 // Cambia al pin donde está conectado tu LED
+
 String inputCommand = "";
 // UART del SIM7600
 HardwareSerial sim7600(1); // UART1
 
-String rawdata;             // Variable para almacenar los datos del GPS
 unsigned long lastPrintTime = 0; // Tiempo del último envío
  unsigned long interval = 20000;
 float lastValidCourse = 0.0;
@@ -48,7 +49,7 @@ GPSData currentGNSSData;
 String GNSSData;
 int eventState;
 bool ignState;
-bool fix = 1;
+bool fix;
 String datetime;
 
 String latitude;
@@ -57,6 +58,10 @@ String longitude;
 int count_course = 0;
 int count = 0;
 
+unsigned long previousMillis = 0; // Almacena el último momento en que se cambió el estado del LED
+const unsigned long ledInterval = 500; // Intervalo de parpadeo en milisegundos (1 segundo)
+bool ledState = LOW; // Estado actual del LED
+
 void activeSIM();
 void configSIM();
 void activeGPS();
@@ -64,7 +69,7 @@ void activeReport();
 String trimResponse(const String& response);
 String sendCommandWithResponse( const char* command, int timeout );
 String processResponse(const String& command,  const String& fcommand, const String& response);
-String readSerialGNSSData();
+String readSerialGNSSData(int timeout);
 void handleSerialInput();
 String formatCoordinates(double coord, char direction);
 String formatDate(const String &date);
@@ -88,6 +93,7 @@ bool getPositionServer();
 void confiGpsReports();
 bool checkSignificantCourseChange(float currentCourse);
 void processCommand(String command);
+void blinkLED(int fix);
 
 void setup() {
   // Configurar pines
@@ -98,6 +104,8 @@ void setup() {
   sim7600.begin(115200, SERIAL_8N1, 5, 4); // RX=IO5, TX=IO4
   Serial.begin(115200); // UART para monitoreo en PC
   pinMode(10, INPUT);
+  pinMode(LED_PIN, OUTPUT); // Configura el pin como salida
+  digitalWrite(LED_PIN, ledState); // Asegúrate de que el LED inicie apagado
   // Iniciar el módulo SIM7600
   activeSIM();
   do{Serial.println("Inicializando Modulo...");}while(!initializeModule());
@@ -109,8 +117,10 @@ void setup() {
 
 void loop() {
    handleSerialInput();
-  GNSSData = readSerialGNSSData();                 
+  GNSSData = readSerialGNSSData(1000); 
+  GNSSData == ",,,,,,,,,,,,,,," ? fix = 0 : fix = 1;                
   currentGNSSData = processGNSS(GNSSData);
+   
   readInput() ? ignState = 0 : ignState = 1;
   ignition_event(currentGNSSData);
   datetime = currentGNSSData.date+";"+currentGNSSData.utc_time;
@@ -150,9 +160,10 @@ void loop() {
   if (currentTime - lastPrintTime >= interval && ignState == 1) {
     lastPrintTime = currentTime;
     Serial.println("DATA =>"+message);
-    Serial.println("RAWDATA =>"+GNSSData);
+    Serial.println("RAWDATA => " +GNSSData );
     sendData(message, 1000);
-  } 
+  }
+  blinkLED(fix); 
 }
 bool checkSignificantCourseChange(float currentCourse) {
   if (isnan(currentCourse)) {
@@ -172,13 +183,25 @@ bool checkSignificantCourseChange(float currentCourse) {
   //previousCourse = currentCourse;  // Actualizar de todos modos para la próxima comparación
   return false;
 }
-String readSerialGNSSData() {
-  String clean = "";
-  while (sim7600.available()) {
-    rawdata = sim7600.readStringUntil('\n'); // Leer una línea completa 
-    //clean = cleanGNSS(rawdata);    
+String readSerialGNSSData(int timeout) {
+  
+  String rawdata = "";
+  long startTime = millis();
+  while ((millis() - startTime) < timeout) {
+    if (sim7600.available()) {
+      char c = sim7600.read();
+      rawdata += c;
+    }
   }
-  return rawdata;
+
+
+  /*String clean = "";
+  long startTime = millis();
+  while (sim7600.available()) {
+  String  rawdata = sim7600.readStringUntil('\n'); // Leer una línea completa 
+  }*/
+  
+  return cleanGNSS(rawdata);
 }
 void handleSerialInput() {
 
@@ -267,6 +290,7 @@ String sendCommandWithResponse( const char* command, int timeout ) {
 }
 String cleanGNSS(const String& cleanData) {
   String processData = cleanData;
+  processData = trimResponse(processData);
   processData.replace("+CGNSSINFO: ", "");
   return processData;
 }
@@ -275,7 +299,7 @@ GPSData processGNSS(const String& trashData) {
   GPSData gpsData;
   int index = 0;
 
-  data.replace("+CGNSSINFO: ", "");
+  //data.replace("+CGNSSINFO: ", "");
   String tokens[16]; // Array para almacenar las partes de la cadena
 
     // Dividir la cadena en partes usando ',' como delimitador
@@ -479,6 +503,7 @@ String readData(String data, int timeout) {
   // Extrae desde "CMD" hasta el final de la cadena
   return data.substring(startIndex);  
 }
+
 int commandType(const String& command) {
   if (command.endsWith("=?")){
     //Serial.println("Es un comando de prueba (TEST).");
@@ -573,5 +598,21 @@ void processCommand(String command) {
       }
   } else {
       Serial.println("Error en el formato del comando.");
+    }
+}
+void blinkLED(int fix) {
+    unsigned long currentMillis = millis(); // Tiempo actual
+
+    // Verifica si ha pasado el intervalo desde el último cambio de estado
+    if (currentMillis - previousMillis >= ledInterval) {
+        previousMillis = currentMillis; // Actualiza el tiempo del último cambio
+
+        // Cambia el estado del LED
+        fix == 0? ledState = !ledState : ledState = fix;
+        digitalWrite(LED_PIN, ledState);
+
+       /* // Imprime el estado del LED en el monitor serial
+        Serial.print("LED está ");
+        Serial.println(ledState ? "ENCENDIDO" : "APAGADO");*/
     }
 }
