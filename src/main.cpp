@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <vector>
+#include <queue>
 #include "enum_events.h"
 #include "Utils.h"
 
@@ -14,7 +14,7 @@ HardwareSerial sim7600(1); // UART1
 
 String rawdata;             // Variable para almacenar los datos del GPS
 unsigned long lastPrintTime = 0; // Tiempo del último envío
- unsigned long interval = 15000;
+ unsigned long interval = 20000;
 float lastValidCourse = 0.0;
 String message="";
 float previousCourse = -1.0;
@@ -23,7 +23,8 @@ bool LaststateIgnition = HIGH;
 String state = "IP";
 String apn = "internet.itelcel.com";
 int c_id = 1;
-std::vector<String> storedMessages;
+std::queue<String> messageQueue;
+bool isAccumulating = false; 
 
 struct GPSData {
   int mode;
@@ -120,32 +121,37 @@ void loop() {
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;1;1;0929;4.1;14.19";
   
   if (checkSignificantCourseChange(currentGNSSData.course) && ignState == 1) {
-    count_course++;
+    /*messageQueue.push(message);
+    isAccumulating = true;
+    count_course++;*/
     Serial.print("guardo en buffer y retorno = >");
-    Serial.println(message +" :: "+count_course);
-    storedMessages.push_back(message);
+    //Serial.println(count_course);
+    sendData(message, 1000);
     return; 
   }
 
    // Si no hay cambio significativo, pero hay mensajes almacenados
-  if (!storedMessages.empty()) {
-    // Enviar todos los mensajes almacenados
-    for (const auto& msg : storedMessages) {
-      count++;
-      Serial.print("buffer => ");
-      Serial.println(msg +":"+count);
-      sendData(msg, 1500);
-    }
-    storedMessages.clear(); // Limpiar el vector después de enviar los mensajes
-  }
-  count_course = 0;
-  count=0;
+  /*if (!messageQueue.empty() && !checkSignificantCourseChange(currentGNSSData.course)) {
+        Serial.println("Enviando mensajes almacenados...");
+        while (!messageQueue.empty()) {
+            String msg = messageQueue.front(); // Obtener el primer mensaje
+            sendData(msg, 100);                // Enviar mensaje al servidor
+            messageQueue.pop();                // Eliminar mensaje de la cola
+            count++;
+            Serial.print("Mensaje enviado. Quedan en cola: ");
+            Serial.println(messageQueue.size());
+        }
+        isAccumulating = false;
+        count_course = 0; // Reiniciar contador de mensajes
+        count = 0;
+  }*/
+
   unsigned long currentTime = millis();
   if (currentTime - lastPrintTime >= interval && ignState == 1) {
     lastPrintTime = currentTime;
     Serial.println("DATA =>"+message);
     Serial.println("RAWDATA =>"+GNSSData);
-    sendData(message, 1500);
+    sendData(message, 1000);
   } 
 }
 bool checkSignificantCourseChange(float currentCourse) {
@@ -155,7 +161,7 @@ bool checkSignificantCourseChange(float currentCourse) {
   }
 
   float difference = abs(currentCourse - previousCourse);
-  if (difference >= 10) {
+  if (difference >= 15) {
     Serial.print("Cambio significativo detectado en course: ");
     Serial.println(difference);
     trackingCourse = 1;
@@ -297,13 +303,13 @@ GPSData processGNSS(const String& trashData) {
     if (!tokens[11].isEmpty()) {
         gpsData.speed = tokens[11].toFloat() * 1.85;
     }
-    //gpsData.course = tokens[12].toFloat();
-    if (!tokens[12].isEmpty()) {
+    gpsData.course = tokens[12].toFloat();
+    /*if (!tokens[12].isEmpty()) {
         float parsedCourse = tokens[12].toFloat();
         gpsData.course = (parsedCourse > 0) ? lastValidCourse = parsedCourse : lastValidCourse;
     } else {
         gpsData.course = lastValidCourse; // Usa el último valor válido si el campo está vacío
-    }
+    }*/
 
     gpsData.pdop = tokens[13].toFloat();
     gpsData.hdop = tokens[14].toFloat();
@@ -418,7 +424,7 @@ void event_generated(GPSData gpsData, int event){
     data_event = "ALT;2049830928;3FFFFF;32;1.0.0;1;"+datetime+";103682809;334;020;40C6;20;"+latitude+";"+longitude+";"+String(currentGNSSData.speed) + ";" +
             String(currentGNSSData.course) + ";" +String(currentGNSSData.gps_svs)+";"+fix+";"+trackingCourse+"000000"+ignState+";00000000;"+event+";;";
     Serial.println("Event => "+ data_event);
-    sendData(data_event, 1500);
+    sendData(data_event, 2000);
 }
 bool readInput() {
     return digitalRead(10);
